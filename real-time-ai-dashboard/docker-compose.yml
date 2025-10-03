@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: apppass
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://appuser:apppass@db:5432/appdb
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  crawler-worker:
+    build: ./backend
+    working_dir: /app
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      BACKEND_URL: http://backend:8080
+    depends_on:
+      - backend
+      - redis
+    command: ["celery", "-A", "crawler.worker.celery_app", "worker", "--loglevel=INFO"]
+
+  celery-beat:
+    build: ./backend
+    working_dir: /app
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    command: ["celery", "-A", "crawler.worker.celery_app", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:8080
+    command: ["sh", "-lc", "npm install && npm run dev -- -p 3000"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  db-data:

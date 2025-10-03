@@ -1,0 +1,89 @@
+name: Nightly Update Index
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 03:00 Paris (UTC+2) ~ adjust by timezone; GH uses UTC
+  workflow_dispatch: {}
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_URL: ${{ secrets.BACKEND_URL }}
+      EVAL_MIN_OVERALL_SCORE: ${{ vars.EVAL_MIN_OVERALL_SCORE || 0.75 }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python deps
+        run: |
+          pip install requests pytest psycopg
+
+      - name: Trigger crawl allowlist
+        if: env.BACKEND_URL != ''
+        run: |
+          python - <<'PY'
+          import os, requests
+          url = os.environ['BACKEND_URL'].rstrip('/') + '/ingest/run'
+          r = requests.post(url, json={})
+          r.raise_for_status()
+          print('enqueued ingest:', r.json())
+          PY
+
+      - name: Build index
+        if: env.BACKEND_URL != ''
+        run: |
+          python - <<'PY'
+          import os, requests
+          url = os.environ['BACKEND_URL'].rstrip('/') + '/index/build'
+          r = requests.post(url)
+          r.raise_for_status()
+          print('enqueued index build:', r.json())
+          PY
+
+      - name: Evaluate index and store report
+        id: eval
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, time
+          # Use evaluator locally to produce report for a hypothetical version id (e.g., timestamp)
+          version_id = int(time.time())
+          import sys
+          sys.path.insert(0, os.getcwd())
+          from evaluator.evaluate import evaluate_index
+          report = evaluate_index(version_id, backend_search=lambda q: {"answer":"", "sources":[]})
+          p = 'evaluator/reports/index_%d.json' % version_id
+          with open(p, 'w', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+          print('REPORT_PATH=' + p)
+          print('OVERALL=' + str(report['overall_score']))
+          print('ELIGIBLE=' + str(report['eligible_for_activation']))
+          PY
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-report
+          path: evaluator/reports/*.json
+
+      - name: Create release if eligible
+        if: steps.eval.outputs.ELIGIBLE != ''
+        env:
+          ELIGIBLE: ${{ steps.eval.outputs.ELIGIBLE }}
+        run: |
+          echo "Eligible: $ELIGIBLE (release step placeholder)." 
+
+      - name: Activate index
+        if: env.BACKEND_URL != ''
+        run: |
+          python - <<'PY'
+          import os, requests, time
+          url = os.environ['BACKEND_URL'].rstrip('/') + '/index/activate'
+          version_id = int(time.time())
+          r = requests.post(url, json={"index_version_id": version_id, "threshold_score": 0})
+          r.raise_for_status()
+          print('activated index:', r.json())
+          PY

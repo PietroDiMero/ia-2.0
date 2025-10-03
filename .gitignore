@@ -1,0 +1,71 @@
+# ---- OS / Editors ----
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+.history/
+*.code-workspace
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.build/
+build/
+dist/
+.wheels/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ---- Notebooks ----
+.ipynb_checkpoints/
+
+# ---- Node / Next.js ----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Docker / Compose ----
+# Named volumes are not on the FS, but ignore local bind mounts if used later
+/data/
+/tmp/
+
+# ---- Env & Secrets ----
+.env
+.env.*
+*.env
+!.env.example
+.direnv/
+
+# ---- Logs (keep dummy_data.json for tests/seed, ignore runtime logs) ----
+logs/
+*.log
+logs.json
+
+# ---- Misc ----
+*.bak
+*.tmp
+*.temp
+~$*

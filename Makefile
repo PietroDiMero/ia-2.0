@@ -1,0 +1,20 @@
+SHELL := /bin/sh
+
+PROJECT := web-ai-evolving
+
+.PHONY: up down logs ps build
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down -v
+
+logs:
+	docker compose logs -f --tail=200
+
+ps:
+	docker compose ps
+
+build:
+	docker compose build

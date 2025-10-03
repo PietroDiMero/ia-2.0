@@ -1,0 +1,68 @@
+{
+  "version_id": 7,
+  "items": [
+    {
+      "question": "Quelle est la capitale de la France ?",
+      "expected_answer": "Paris",
+      "expected_sources": [
+        "https://fr.wikipedia.org/wiki/Paris",
+        "https://www.britannica.com/place/Paris"
+      ],
+      "answer": "",
+      "sources": [],
+      "metrics": {
+        "exact": 0.0,
+        "semantic_f1": 0.0,
+        "groundedness": 0.0,
+        "freshness": 0.0
+      }
+    },
+    {
+      "question": "En quelle année a été fondée OpenAI ?",
+      "expected_answer": "2015",
+      "expected_sources": [
+        "https://openai.com/",
+        "https://en.wikipedia.org/wiki/OpenAI"
+      ],
+      "answer": "",
+      "sources": [],
+      "metrics": {
+        "exact": 0.0,
+        "semantic_f1": 0.0,
+        "groundedness": 0.0,
+        "freshness": 0.0
+      }
+    },
+    {
+      "question": "Que signifie RAG en IA ?",
+      "expected_answer": "Retrieval-Augmented Generation",
+      "expected_sources": [
+        "https://arxiv.org/abs/2005.11401",
+        "https://www.pinecone.io/learn/retrieval-augmented-generation/"
+      ],
+      "answer": "",
+      "sources": [],
+      "metrics": {
+        "exact": 0.0,
+        "semantic_f1": 0.0,
+        "groundedness": 0.0,
+        "freshness": 0.0
+      }
+    }
+  ],
+  "aggregates": {
+    "exact": 0.0,
+    "semantic_f1": 0.0,
+    "groundedness": 0.0,
+    "freshness": 0.0,
+    "avg_freshness_days": null
+  },
+  "weights": {
+    "exact": 0.25,
+    "semantic_f1": 0.35,
+    "groundedness": 0.25,
+    "freshness": 0.15
+  },
+  "overall_score": 0.0,
+  "eligible_for_activation": false
+}

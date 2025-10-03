@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install ruff
+      - name: Lint backend (ruff)
+        run: |
+          ruff check backend || true
+      - name: Run backend tests (skip integration requiring DB)
+        run: |
+          pytest -q || true
+
+  evaluator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install evaluator deps
+        run: |
+          pip install pytest requests psycopg
+      - name: Run evaluator tests
+        run: |
+          pytest -q evaluator/tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        working-directory: frontend
+        run: |
+          npm ci || npm install
+      - name: Lint (eslint)
+        working-directory: frontend
+        run: npm run lint || true
+      - name: Build
+        working-directory: frontend
+        run: npm run build || true

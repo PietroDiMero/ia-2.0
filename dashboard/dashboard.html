@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tableau de bord IA Auto‑Évolutive</title>
+  <!-- Tailwind CSS via official CDN (generates styles at runtime) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome for icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    /* Personnalisation minimale */
+    .success-icon { color: #16a34a; }
+    .fail-icon { color: #dc2626; }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans leading-normal tracking-normal p-4">
+  <div class="max-w-6xl mx-auto">
+    <div id="systemStatusBanner" class="mb-4 p-3 rounded text-white hidden"></div>
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold text-center mb-2">Tableau de bord : IA Auto‑Évolutive</h1>
+      <p class="text-center text-gray-600">Démarrez/arrêtez l'IA, posez des questions et visualisez l'historique, le seuil et le taux de succès.</p>
+    </header>
+    <!-- KPIs Overview -->
+    <section class="mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="text-xs text-gray-500">Documents</div>
+          <div id="kpiDocuments" class="text-2xl font-bold">-</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="text-xs text-gray-500">Dernière mise à jour</div>
+          <div id="kpiLastUpdate" class="text-2xl font-bold">-</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="text-xs text-gray-500">Score</div>
+          <div id="kpiScore" class="text-2xl font-bold">-</div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="text-xs text-gray-500">Jobs actifs</div>
+          <div id="kpiJobs" class="text-2xl font-bold">0</div>
+        </div>
+      </div>
+    </section>
+    <section class="mb-6 bg-white shadow rounded-lg p-4">
+      <div class="flex flex-wrap items-center gap-3">
+        <button id="btnStart" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"><i class="fa fa-play mr-1"></i>Démarrer</button>
+        <button id="btnStop" class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"><i class="fa fa-stop mr-1"></i>Arrêter</button>
+  <button id="btnEvolve" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"><i class="fa fa-flask mr-1"></i>Évoluer</button>
+  <input id="crawlUrl" type="url" placeholder="https://exemple.com/article" class="border rounded px-3 py-2 w-96" />
+  <button id="btnCrawl" class="px-3 py-2 bg-amber-600 text-white rounded hover:bg-amber-700"><i class="fa fa-spider mr-1"></i>Apprendre URL</button>
+        <span id="status" class="ml-auto text-sm text-gray-700">Statut : -</span>
+      </div>
+      <div class="mt-4 flex gap-2">
+        <input id="question" type="text" placeholder="Posez une question…" class="flex-1 border rounded px-3 py-2" />
+        <button id="btnAsk" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"><i class="fa fa-paper-plane mr-1"></i>Envoyer</button>
+      </div>
+      <div id="answerBox" class="mt-3 text-gray-800 text-sm"></div>
+    </section>
+    <!-- Background Crawler Controls -->
+    <section class="mb-6 bg-white shadow rounded-lg p-4">
+      <h2 class="text-xl font-semibold mb-3">Crawler Web (apprentissage continu)</h2>
+      <div class="flex flex-wrap items-center gap-3 mb-2">
+        <input id="seedUrls" type="text" placeholder="https://exemple.com, https://blog.exemple.com/article" class="flex-1 border rounded px-3 py-2" />
+        <input id="maxPages" type="number" min="1" value="30" class="w-28 border rounded px-3 py-2" />
+        <input id="delaySec" type="number" min="0.1" step="0.1" value="1.5" class="w-28 border rounded px-3 py-2" />
+        <label class="inline-flex items-center gap-2 text-sm text-gray-700"><input id="sameDomain" type="checkbox" checked /> Limiter au domaine</label>
+        <button id="btnCrawlStart" class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"><i class="fa fa-road mr-1"></i>Démarrer crawl</button>
+        <button id="btnCrawlStop" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"><i class="fa fa-hand mr-1"></i>Arrêter</button>
+      </div>
+      <div id="crawlStatus" class="text-sm text-gray-700">—</div>
+      <div class="mt-3 grid grid-cols-1 lg:grid-cols-5 gap-2">
+        <input id="searchQuery" type="text" placeholder="ex: meilleures pratiques Flask" class="border rounded px-3 py-2 lg:col-span-2" />
+        <select id="searchEngine" class="border rounded px-3 py-2">
+          <option value="ddg" selected>DuckDuckGo (fallback HTML)</option>
+          <option value="bing">Bing API</option>
+          <option value="google">Google CSE</option>
+          <option value="serpapi">SerpAPI (Google)</option>
+        </select>
+        <input id="searchMaxResults" type="number" min="1" value="10" class="border rounded px-3 py-2" />
+        <button id="btnSearchLearn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"><i class="fa fa-magnifying-glass mr-1"></i>Rechercher & Apprendre</button>
+      </div>
+    </section>
+    <!-- Charts Row -->
+    <section class="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div>
+        <h2 class="text-xl font-semibold mb-4">Documents par jour</h2>
+        <div class="bg-white p-4 rounded-lg shadow">
+          <canvas id="chartDocsPerDay" style="max-height:260px; width:100%"></canvas>
+        </div>
+      </div>
+      <div>
+        <h2 class="text-xl font-semibold mb-4">Répartition des sources</h2>
+        <div class="bg-white p-4 rounded-lg shadow">
+          <canvas id="chartSources" style="max-height:260px; width:100%"></canvas>
+        </div>
+      </div>
+    </section>
+    <section class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">Historique des requêtes</h2>
+      <div class="overflow-x-auto bg-white shadow rounded-lg">
+        <table class="min-w-full text-sm divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">N°</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Date</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Question</th>
+              <th class="px-4 py-2 text-center font-medium text-gray-700">Succès</th>
+              <th class="px-4 py-2 text-center font-medium text-gray-700">Seuil</th>
+              <th class="px-4 py-2 text-center font-medium text-gray-700">Sources</th>
+            </tr>
+          </thead>
+          <tbody id="logTable" class="divide-y divide-gray-200"></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">Évolution du seuil et des performances</h2>
+      <div class="bg-white p-4 rounded-lg shadow">
+        <canvas id="performanceChart" style="max-height:240px; width:100%"></canvas>
+      </div>
+    </section>
+    <!-- Recent Documents -->
+    <section class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">Derniers documents</h2>
+      <div class="overflow-x-auto bg-white shadow rounded-lg">
+        <table class="min-w-full text-sm divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Titre</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Source</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Date</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-700">Langue</th>
+            </tr>
+          </thead>
+          <tbody id="recentDocsTable" class="divide-y divide-gray-200"></tbody>
+        </table>
+      </div>
+    </section>
+    <!-- Evolver History -->
+    <section class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">Évolutions IA</h2>
+      <div id="evolverHistory" class="bg-white shadow rounded-lg p-4 text-sm text-gray-800">-</div>
+    </section>
+    <!-- Errors Panel -->
+    <section class="mb-8">
+      <h2 class="text-xl font-semibold mb-4">Erreurs récentes (client + serveur)</h2>
+      <div class="bg-white shadow rounded-lg p-4">
+        <div id="errorsBox" class="text-sm text-gray-800 whitespace-pre-wrap">—</div>
+      </div>
+    </section>
+  </div>
+  <script>
+    // --- Client-side error capture ---
+    const _clientErrors = [];
+    function _pushClientError(evt) {
+      try {
+        _clientErrors.push({
+          ts: new Date().toISOString(),
+          type: evt.type || 'error',
+          message: (evt.message || evt.reason || evt)?.toString?.() || String(evt),
+          source: evt.filename || evt.source || null,
+          lineno: evt.lineno || null,
+          colno: evt.colno || null,
+          stack: (evt.error && evt.error.stack) ? String(evt.error.stack) : (evt.reason && evt.reason.stack ? String(evt.reason.stack) : null)
+        });
+      } catch {}
+    }
+    window.addEventListener('error', (e) => { _pushClientError(e); renderErrors(); });
+    window.addEventListener('unhandledrejection', (e) => { _pushClientError(e); renderErrors(); });
+    const _origConsoleError = console.error;
+    console.error = function() {
+      try { _pushClientError({ type: 'console.error', message: Array.from(arguments).map(a=>String(a)).join(' ') }); } catch {}
+      return _origConsoleError.apply(console, arguments);
+    };
+
+    async function fetchJSON(url) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) {
+          const text = await r.text();
+          _pushClientError({ type: 'fetch', message: `HTTP ${r.status} on ${url}: ${text.slice(0, 200)}` });
+          renderErrors();
+          return null;
+        }
+        return await r.json();
+      } catch (e) {
+        console.error('fetchJSON failed', url, e);
+        return null;
+      }
+    }
+
+    async function loadLogs() {
+      try {
+        const response = await fetch('/api/logs');
+        const logs = await response.json();
+        return logs;
+      } catch (err) {
+        console.error('Erreur lors du chargement des logs:', err);
+        return [];
+      }
+    }
+
+    function populateTable(logs) {
+      const tbody = document.getElementById('logTable');
+      tbody.innerHTML = '';
+      logs.forEach((log, index) => {
+        const row = document.createElement('tr');
+        row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+        // N°
+        const cellIndex = document.createElement('td');
+        cellIndex.className = 'px-4 py-2 text-gray-700';
+        cellIndex.textContent = index + 1;
+        row.appendChild(cellIndex);
+        // Date
+        const cellDate = document.createElement('td');
+        cellDate.className = 'px-4 py-2 text-gray-700 whitespace-nowrap';
+        const date = new Date(log.timestamp);
+        cellDate.textContent = date.toLocaleString();
+        row.appendChild(cellDate);
+        // Question
+        const cellQuestion = document.createElement('td');
+        cellQuestion.className = 'px-4 py-2 text-gray-700';
+        cellQuestion.textContent = log.question;
+        row.appendChild(cellQuestion);
+        // Succès
+        const cellSuccess = document.createElement('td');
+        cellSuccess.className = 'px-4 py-2 text-center';
+        const icon = document.createElement('i');
+        icon.className = log.success ? 'fa-solid fa-check-circle success-icon' : 'fa-solid fa-xmark-circle fail-icon';
+        cellSuccess.appendChild(icon);
+        row.appendChild(cellSuccess);
+        // Seuil
+        const cellThreshold = document.createElement('td');
+        cellThreshold.className = 'px-4 py-2 text-center text-gray-700';
+        cellThreshold.textContent = log.threshold.toFixed(2);
+        row.appendChild(cellThreshold);
+        // Sources
+        const cellSources = document.createElement('td');
+        cellSources.className = 'px-4 py-2 text-center text-gray-700';
+        if (log.sources && log.sources.length > 0) {
+          const list = document.createElement('ul');
+          list.className = 'list-disc list-inside';
+          log.sources.forEach(src => {
+            const li = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = src;
+            link.textContent = src;
+            link.className = 'text-blue-600 hover:underline';
+            link.target = '_blank';
+            li.appendChild(link);
+            list.appendChild(li);
+          });
+          cellSources.appendChild(list);
+        } else {
+          cellSources.textContent = '-';
+        }
+        row.appendChild(cellSources);
+        tbody.appendChild(row);
+      });
+    }
+
+    function drawChart(logs) {
+      const ctx = document.getElementById('performanceChart').getContext('2d');
+      // Préparer les données
+      const labels = logs.map((_, i) => i + 1);
+      const thresholdData = logs.map(log => log.threshold);
+      const successData = logs.map(log => log.success ? 1 : 0);
+      // Détruire l'ancien graphique si nécessaire
+      if (window._performanceChart) {
+        window._performanceChart.destroy();
+      }
+      // Créer un nouveau graphique
+      window._performanceChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Seuil de similarité',
+              data: thresholdData,
+              tension: 0.3,
+              borderWidth: 2,
+              fill: false
+            },
+            {
+              label: 'Succès (1 = oui, 0 = non)',
+              data: successData,
+              tension: 0.3,
+              borderDash: [5, 5],
+              borderWidth: 2,
+              fill: false
+            }
+          ]
+        },
+         options: {
+           responsive: true,
+           maintainAspectRatio: false,
+           aspectRatio: 2.0,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 0.1
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top'
+            },
+            tooltip: {
+              callbacks: {
+                label: (context) => {
+                  return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    async function renderOverview() {
+      const data = await fetchJSON('/dashboard/overview');
+      if (!data?.kpis) return;
+      document.getElementById('kpiDocuments').textContent = data.kpis.documents ?? '-';
+      document.getElementById('kpiLastUpdate').textContent = data.kpis.last_update ?? '-';
+      document.getElementById('kpiScore').textContent = (data.kpis.score ?? '-');
+      document.getElementById('kpiJobs').textContent = data.kpis.jobs_active ?? 0;
+    }
+
+    async function drawDocsPerDay() {
+      const res = await fetchJSON('/dashboard/timeseries/docs_per_day');
+      const items = res?.items || [];
+      const labels = items.map(x => x.date);
+      const values = items.map(x => x.documents);
+      const ctx = document.getElementById('chartDocsPerDay').getContext('2d');
+      if (window._chartDocsPerDay) window._chartDocsPerDay.destroy();
+      window._chartDocsPerDay = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{ label: 'Docs', data: values, borderWidth: 2, tension: 0.3 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, aspectRatio: 2.0 }
+      });
+    }
+
+    async function drawSourcesBreakdown() {
+      const res = await fetchJSON('/dashboard/sources_breakdown');
+      const items = res?.items || [];
+      const labels = items.map(x => x.type);
+      const values = items.map(x => x.count);
+      const ctx = document.getElementById('chartSources').getContext('2d');
+      if (window._chartSources) window._chartSources.destroy();
+      window._chartSources = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels,
+          datasets: [{ data: values, backgroundColor: ['#60a5fa','#34d399','#fbbf24','#f87171'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, aspectRatio: 1.6 }
+      });
+    }
+
+    async function renderRecentDocs() {
+      const res = await fetchJSON('/dashboard/recent_docs');
+      const items = res?.items || [];
+      const tbody = document.getElementById('recentDocsTable');
+      tbody.innerHTML = '';
+      for (const it of items) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-4 py-2">${(it.title || '').slice(0, 120)}</td>
+          <td class="px-4 py-2">${it.source || '-'}</td>
+          <td class="px-4 py-2">${it.date || '-'}</td>
+          <td class="px-4 py-2 uppercase">${it.lang || '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function renderEvolverHistory() {
+      const res = await fetchJSON('/dashboard/evolver_history');
+      const items = res?.items || [];
+      const box = document.getElementById('evolverHistory');
+      if (!items.length) { box.textContent = 'Aucune évolution récente.'; return; }
+      const list = document.createElement('ul');
+      list.className = 'list-disc list-inside';
+      for (const it of items.slice(0, 10)) {
+        const li = document.createElement('li');
+        const status = it.status || 'inconnu';
+        li.textContent = `#${it.id ?? '?'} ${it.title ?? 'MàJ'} — ${status} — ${it.created_at ?? ''}`;
+        list.appendChild(li);
+      }
+      box.innerHTML = '';
+      box.appendChild(list);
+    }
+
+    async function initDashboard() {
+      async function renderSystemHealth() {
+        try {
+          const res = await fetch('/api/healthz');
+          if (!res.ok) throw new Error('healthz failed');
+          const h = await res.json();
+          const banner = document.getElementById('systemStatusBanner');
+          const parts = [];
+          const okDb = h.db?.ok; const okRedis = h.redis?.ok; const okData = h.data?.ok; const okBackend = !!h.backend;
+          parts.push(`backend=${okBackend ? 'ok' : 'down'}`);
+          parts.push(`db=${okDb ? 'ok' : 'down'}`);
+          parts.push(`redis=${okRedis ? 'ok' : 'down'}`);
+          parts.push(`data=${okData ? 'ok' : 'down'}(${h.data?.docs ?? 0})`);
+          parts.push(`crawler running=${h.crawler?.running ? 'yes' : 'no'} v=${h.crawler?.visited ?? 0} q=${h.crawler?.queue ?? 0}`);
+          banner.textContent = 'Santé système: ' + parts.join(' | ');
+          banner.classList.remove('hidden');
+          const allOk = okBackend && okDb && okRedis && okData;
+          banner.className = 'mb-4 p-3 rounded text-white ' + (allOk ? 'bg-emerald-600' : 'bg-amber-600');
+        } catch (e) {
+          const banner = document.getElementById('systemStatusBanner');
+          banner.textContent = 'Santé système: indisponible';
+          banner.classList.remove('hidden');
+          banner.className = 'mb-4 p-3 rounded text-white bg-red-600';
+        }
+      }
+      const renderStatus = async () => {
+        try {
+          const res = await fetch('/api/status');
+          const s = await res.json();
+          const running = s.running ? 'En marche' : 'Arrêté';
+          document.getElementById('status').textContent = `Statut : ${running} | Seuil: ${s.threshold?.toFixed?.(2) ?? '-'} | Logs: ${s.logs}`;
+        } catch (e) {
+          document.getElementById('status').textContent = 'Statut : indisponible';
+        }
+      };
+
+      // Actions
+      document.getElementById('btnStart').addEventListener('click', async () => {
+        await fetch('/api/start', { method: 'POST' });
+        await renderStatus();
+        await renderSystemHealth();
+      });
+      document.getElementById('btnStop').addEventListener('click', async () => {
+        await fetch('/api/stop', { method: 'POST' });
+        await renderStatus();
+        await renderSystemHealth();
+      });
+      document.getElementById('btnEvolve').addEventListener('click', async () => {
+        const res = await fetch('/api/evolve', { method: 'POST' });
+        const data = await res.json();
+        const box = document.getElementById('answerBox');
+        box.textContent = 'Évolution: ' + JSON.stringify(data);
+        await renderStatus();
+        await renderSystemHealth();
+      });
+      document.getElementById('btnCrawl').addEventListener('click', async () => {
+        const url = document.getElementById('crawlUrl').value.trim();
+        if (!url) return;
+        const res = await fetch('/api/crawl', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+        const data = await res.json();
+        const box = document.getElementById('answerBox');
+        if (data.error) {
+          box.textContent = 'Erreur crawl: ' + data.error;
+        } else {
+          box.textContent = `Crawl ok: ${data.title} (ajouté=${data.added})`;
+        }
+        await refresh();
+        await renderSystemHealth();
+      });
+      document.getElementById('btnAsk').addEventListener('click', async () => {
+        const q = document.getElementById('question').value.trim();
+        if (!q) return;
+        const res = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }) });
+        const data = await res.json();
+        const box = document.getElementById('answerBox');
+        if (data.error) {
+          box.textContent = 'Erreur: ' + data.error;
+        } else {
+          let html = `<div class="font-semibold">Réponse</div><pre class="whitespace-pre-wrap">${data.answer}</pre>`;
+          if (data.sources?.length) {
+            html += '<div class="mt-2">Sources: ' + data.sources.map(s => `<a class="text-blue-600 underline" href="${s}" target="_blank">${s}</a>`).join(', ') + '</div>';
+          }
+          html += `<div class="text-xs text-gray-600 mt-1">Temps: ${data.response_time?.toFixed?.(3) ?? '-'}s | Seuil: ${data.threshold?.toFixed?.(2) ?? '-'}</div>`;
+          box.innerHTML = html;
+        }
+        await refresh();
+        await renderSystemHealth();
+      });
+
+      // Background crawler
+      document.getElementById('btnCrawlStart').addEventListener('click', async () => {
+        const seeds = document.getElementById('seedUrls').value.split(',').map(s=>s.trim()).filter(Boolean);
+        const max_pages = parseInt(document.getElementById('maxPages').value || '30', 10);
+        const delay = parseFloat(document.getElementById('delaySec').value || '1.5');
+        const same_domain = document.getElementById('sameDomain').checked;
+        const res = await fetch('/api/crawl_start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seeds, max_pages, delay, same_domain }) });
+        const data = await res.json();
+        const box = document.getElementById('crawlStatus');
+        box.textContent = data.error ? ('Erreur: ' + data.error) : ('Crawl démarré sur domaine: ' + (data.domain || 'multi-domaines'));
+        await refresh();
+        await renderSystemHealth();
+      });
+      document.getElementById('btnCrawlStop').addEventListener('click', async () => {
+        await fetch('/api/crawl_stop', { method: 'POST' });
+        await refresh();
+      });
+
+      // Search & Learn
+      document.getElementById('btnSearchLearn').addEventListener('click', async () => {
+        const query = document.getElementById('searchQuery').value.trim();
+        const engine = document.getElementById('searchEngine').value;
+        const max_results = parseInt(document.getElementById('searchMaxResults').value || '10', 10);
+        const max_pages = parseInt(document.getElementById('maxPages').value || '30', 10);
+        const delay = parseFloat(document.getElementById('delaySec').value || '1.5');
+        const same_domain = document.getElementById('sameDomain').checked;
+        if (!query) return;
+        const res = await fetch('/api/search_and_learn', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, engine, max_results, max_pages, delay, same_domain }) });
+        const data = await res.json();
+        const box = document.getElementById('crawlStatus');
+        box.textContent = data.error ? ('Erreur: ' + data.error) : (`Découvert=${data.discovered} via ${data.engine} | crawl démarré (domaine=${data.domain || 'multi'})`);
+        await refresh();
+      });
+
+      async function refresh() {
+        const logs = await loadLogs();
+        populateTable(logs);
+        drawChart(logs);
+        await renderStatus();
+        await renderOverview();
+        await drawDocsPerDay();
+        await drawSourcesBreakdown();
+        await renderRecentDocs();
+        await renderEvolverHistory();
+        // Crawl status
+        try {
+          const r = await fetch('/api/crawl_status');
+          const s = await r.json();
+          document.getElementById('crawlStatus').textContent = `running=${s.running} | added=${s.added} | errors=${s.errors} | visited=${s.visited_count} | queue=${s.queue_count} | last=${s.last_url || '-'} ${s.last_error ? '| err=' + s.last_error : ''}`;
+        } catch {}
+        await renderErrors();
+      }
+
+      const logs = await loadLogs();
+      populateTable(logs);
+      drawChart(logs);
+  await renderStatus();
+  await renderOverview();
+  await renderSystemHealth();
+      await drawDocsPerDay();
+      await drawSourcesBreakdown();
+      await renderRecentDocs();
+      await renderEvolverHistory();
+      try {
+        const r = await fetch('/api/crawl_status');
+        const s = await r.json();
+        document.getElementById('crawlStatus').textContent = `running=${s.running} | added=${s.added} | errors=${s.errors} | visited=${s.visited_count} | queue=${s.queue_count} | last=${s.last_url || '-'} ${s.last_error ? '| err=' + s.last_error : ''}`;
+      } catch {}
+      await renderSystemHealth();
+      await renderErrors();
+    }
+    initDashboard();
+
+    async function renderErrors() {
+      try {
+        const res = await fetch('/api/errors');
+        let serverErrors = [];
+        if (res.ok) serverErrors = await res.json();
+        const all = [];
+        for (const e of serverErrors) {
+          all.push(`[SERVER ${e.status}] ${e.timestamp} ${e.method || ''} ${e.path || ''}: ${e.message}${e.stack ? '\n' + e.stack : ''}`);
+        }
+        for (const e of _clientErrors.slice(-50)) {
+          all.push(`[CLIENT ${e.type}] ${e.ts}: ${e.message}${e.stack ? '\n' + e.stack : ''}`);
+        }
+        document.getElementById('errorsBox').textContent = all.length ? all.slice(-200).join('\n\n') : '—';
+      } catch (e) {
+        document.getElementById('errorsBox').textContent = 'Impossible de charger /api/errors';
+      }
+    }
+    // Auto-refresh errors every 5 seconds
+    setInterval(renderErrors, 5000);
+  </script>
+</body>
+</html>

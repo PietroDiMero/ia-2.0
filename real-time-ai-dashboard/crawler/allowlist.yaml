@@ -1,0 +1,5 @@
+# Allowed sources for the crawler
+- url: https://example.com/feed.xml
+  type: rss
+- url: https://example.com/
+  type: html

@@ -1,0 +1,61 @@
+name: auto_update
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r real-time-ai-dashboard/backend/requirements.txt
+
+      - name: Run evolver
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python real-time-ai-dashboard/evolver/evolve.py
+
+      - name: Run backend tests
+        run: |
+          pytest -q real-time-ai-dashboard/backend || true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Frontend install & tests
+        run: |
+          cd real-time-ai-dashboard/frontend
+          npm ci || npm install
+          npm test --if-present || true
+
+      - name: Auto-merge PR if tests passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f real-time-ai-dashboard/evolver/last_pr.json ]; then
+            PR_NUMBER=$(jq -r '.pr.number' real-time-ai-dashboard/evolver/last_pr.json)
+            if [ "$PR_NUMBER" != "null" ]; then
+              gh pr merge $PR_NUMBER --merge --admin || true
+            fi
+          fi

@@ -1,0 +1,26 @@
+[
+  {
+    "question": "Quelle est la capitale de la France ?",
+    "expected_answer": "Paris",
+    "expected_sources": [
+      "https://fr.wikipedia.org/wiki/Paris",
+      "https://www.britannica.com/place/Paris"
+    ]
+  },
+  {
+    "question": "En quelle année a été fondée OpenAI ?",
+    "expected_answer": "2015",
+    "expected_sources": [
+      "https://openai.com/",
+      "https://en.wikipedia.org/wiki/OpenAI"
+    ]
+  },
+  {
+    "question": "Que signifie RAG en IA ?",
+    "expected_answer": "Retrieval-Augmented Generation",
+    "expected_sources": [
+      "https://arxiv.org/abs/2005.11401",
+      "https://www.pinecone.io/learn/retrieval-augmented-generation/"
+    ]
+  }
+]

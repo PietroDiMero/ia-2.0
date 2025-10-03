@@ -1,0 +1,32 @@
+[
+  {
+    "id": "doc1",
+    "title": "Self‑evolving agents defined",
+    "content": "Self‑evolving agents are AI systems designed to continuously learn from data, interactions and experiences. Unlike static language models, they adapt their model, context, tools or architecture based on feedback and performance.",
+    "url": "https://example.com/self-evolving-agents"
+  },
+  {
+    "id": "doc2",
+    "title": "AlphaEvolve overview",
+    "content": "AlphaEvolve is an evolutionary coding agent developed by Google DeepMind. It combines the creativity of large language models with automated evaluators to discover algorithms and optimise code. It improved data‑centre efficiency and chip design by evolving programs through a selection mechanism.",
+    "url": "https://example.com/alphaevolve"
+  },
+  {
+    "id": "doc3",
+    "title": "EvoAgentX framework",
+    "content": "EvoAgentX is an open‑source framework that builds, evaluates and evolves workflows of LLM‑based agents. From a single prompt it constructs multi‑agent pipelines, scores their behaviour and applies self‑evolution algorithms. It supports memory modules and human‑in‑the‑loop checkpoints.",
+    "url": "https://example.com/evoagentx"
+  },
+  {
+    "id": "doc4",
+    "title": "Darwin Gödel Machine summary",
+    "content": "The Darwin Gödel Machine is a self‑improving agent that iteratively modifies its own code. It maintains an archive of coding agents and uses a foundation model to propose new versions. Each modification is validated on benchmarks before being kept, enabling continuous improvement.",
+    "url": "https://example.com/darwin-godel-machine"
+  },
+  {
+    "id": "doc5",
+    "title": "HiVA: Hierarchical Variable Agent",
+    "content": "HiVA models a multi‑agent system as a dynamic graph where both the instructions (semantics) and connections (topology) evolve. It uses textual gradients derived from feedback to refine prompts and structure, and a routing mechanism to select the most relevant agents for a given task.",
+    "url": "https://example.com/hiva-framework"
+  }
+]

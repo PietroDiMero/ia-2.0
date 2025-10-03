@@ -1,0 +1,17 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+psycopg[binary]==3.2.10
+pgvector==0.2.5
+pydantic==2.11.0
+pydantic-settings==2.5.2
+python-socketio[asgi]==5.11.4
+openai==1.109.1
+httpx==0.28.1
+beautifulsoup4==4.14.2
+selectolax==0.3.25
+langdetect==1.0.9
+celery==5.4.0
+redis==5.0.7
+PyYAML==6.0.2
+feedparser==6.0.11
