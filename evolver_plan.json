@@ -1,0 +1,11 @@
+{
+  "title": "Auto-update plan 2025-10-03 (0 changements)",
+  "rationale": "Aucun issues.md trouvé. Plan basé sur une inspection superficielle du code.",
+  "changes": [],
+  "tests": [
+    {
+      "file": "tests/test_smoke_backend.py",
+      "content": "import requests\n\ndef test_health():\n    r = requests.get('http://localhost:8000/health', timeout=5)\n    assert r.ok and r.json().get('status') == 'ok'\n"
+    }
+  ]
+}
