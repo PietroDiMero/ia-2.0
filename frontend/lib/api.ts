@@ -10,6 +10,7 @@ export interface Metrics {
   nb_docs: number; nb_sources: number; last_update: string; documents: number; coverage: number;
   eval_threshold?: number; discovery_queries?: string[]|null; ci?: CiStatus|null;
   retrieval_top_k?: number; confidence_threshold?: number;
+  freshness_days?: number|null; avg_response_time?: number|null;
 }
 export interface Job { task_id?: string; state?: string; status?: string; error?: string; [k: string]: any }
 export interface DocItem { url: string; title: string; date?: string|null; lang?: string|null; created_at?: string|null }

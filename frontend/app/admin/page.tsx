@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   getMetrics,
-  getDocsLatest,
+  getDocs,
   getSources,
   createSource,
   deleteSource,
@@ -31,7 +31,9 @@ import CiChart from "@/components/admin/CiChart"
 export default function AdminPage() {
   const qc = useQueryClient()
   const metrics = useQuery({ queryKey: ["metrics"], queryFn: getMetrics, refetchInterval: 5000 })
-  const docs = useQuery({ queryKey: ["docs"], queryFn: () => getDocsLatest(15), refetchInterval: 10000 })
+  const [docLimit, setDocLimit] = useState(15)
+  const [docOffset, setDocOffset] = useState(0)
+  const docs = useQuery({ queryKey: ["docs", docLimit, docOffset], queryFn: () => getDocs(docLimit, docOffset), refetchInterval: 15000 })
   const [srcLimit, setSrcLimit] = useState(30)
   const sources = useQuery({ queryKey: ["sources", srcLimit], queryFn: () => getSources(srcLimit, 0), refetchInterval: 20000 })
   const versions = useQuery({ queryKey: ["versions"], queryFn: getIndexVersions, refetchInterval: 30000 })
@@ -66,7 +68,7 @@ export default function AdminPage() {
   const mDiscover = useMutation({
     mutationFn: async () => {
       const queries = discoverQueries.split(",").map((q) => q.trim()).filter(Boolean)
-      const start = await runDiscoverAsync(5, 25, queries.length ? queries : undefined)
+  const start: any = await runDiscoverAsync(5, 25, queries.length ? queries : undefined)
       setLastResult(start)
       setMessage("Discover démarré…")
       if (start.task_id) {
@@ -80,7 +82,7 @@ export default function AdminPage() {
   })
   const mRunOnce = useMutation({
     mutationFn: async () => {
-      const start = await postIngestRun({ new_url: newUrl || undefined })
+  const start: any = await postIngestRun({ new_url: newUrl || undefined })
       setLastResult(start)
       setMessage("Run once démarré en arrière-plan…")
       if (start.task_id) {
@@ -173,8 +175,15 @@ export default function AdminPage() {
     { key: 'settings', label: 'Paramètres' },
   ]), [])
 
+  const anyLoading = [metrics, docs, sources, versions, events, live, settings, ciHistory].some(q => q.isFetching)
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {anyLoading && (
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-end p-4 z-50">
+          <div className="animate-pulse bg-slate-800/80 text-xs text-slate-300 px-3 py-2 rounded shadow border border-slate-700">Chargement…</div>
+        </div>
+      )}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 py-4 flex items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-semibold tracking-wide text-slate-100">AI Admin Console</h1>
@@ -257,6 +266,10 @@ export default function AdminPage() {
                 </ul>
               </Section>
               <Section title="Derniers documents">
+                <div className="flex justify-between items-center mb-2 text-[10px] text-slate-400">
+                  <div>Total: {docs.data?.total ?? 0}</div>
+                  <div>{docOffset + 1} – {Math.min(docOffset + docLimit, (docs.data?.total ?? 0))}</div>
+                </div>
                 <ul className="text-xs divide-y divide-slate-800 max-h-[300px] overflow-auto">
                   {(docs.data?.items || []).map((d, i) => (
                     <li key={i} className="py-2">
@@ -264,7 +277,12 @@ export default function AdminPage() {
                       <div className="text-[10px] text-slate-500 mt-0.5">{d.lang || 'und'} · {d.date || ''}</div>
                     </li>
                   ))}
+                  {docs.data && docs.data.items.length === 0 && <li className="py-6 text-center text-slate-500">Aucun document</li>}
                 </ul>
+                <div className="flex justify-between mt-2 gap-2">
+                  <button disabled={docOffset===0} onClick={() => setDocOffset(o => Math.max(0, o - docLimit))} className="flex-1 disabled:opacity-30 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]">Précédent</button>
+                  <button disabled={!docs.data || docOffset + docLimit >= (docs.data.total || 0)} onClick={() => setDocOffset(o => o + docLimit)} className="flex-1 disabled:opacity-30 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]">Suivant</button>
+                </div>
               </Section>
               <Section title="Index versions" dense>
                 <ul className="text-[11px] text-slate-400 space-y-1">
@@ -311,7 +329,7 @@ export default function AdminPage() {
                   {(sources.data?.items || []).map((s) => (
                     <li key={s.id} className="py-2 flex items-center gap-2">
                       <span className="truncate flex-1" title={s.url}>{s.url}</span>
-                      <span className="text-slate-500">{s.type}</span>
+                      <span className="text-slate-500">{(s as any).type || s.kind}</span>
                       <button className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-[10px]" onClick={async () => alert(JSON.stringify(await testSourceConnectivity(s.id)))}>Test</button>
                       <button className="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-[10px]" onClick={async () => { await deleteSource(s.id); qc.invalidateQueries({ queryKey: ['sources'] }) }}>X</button>
                     </li>
@@ -339,7 +357,12 @@ export default function AdminPage() {
                       <div className="text-[10px] text-slate-500">{d.lang || 'und'} · {d.date || ''}</div>
                     </li>
                   ))}
+                  {docs.data && docs.data.items.length === 0 && <li className="py-6 text-center text-slate-500">Aucun document</li>}
                 </ul>
+                <div className="flex justify-between mt-2 gap-2">
+                  <button disabled={docOffset===0} onClick={() => setDocOffset(o => Math.max(0, o - docLimit))} className="flex-1 disabled:opacity-30 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]">Précédent</button>
+                  <button disabled={!docs.data || docOffset + docLimit >= (docs.data.total || 0)} onClick={() => setDocOffset(o => o + docLimit)} className="flex-1 disabled:opacity-30 px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px]">Suivant</button>
+                </div>
               </Section>
             </div>
           </div>
