@@ -6,7 +6,7 @@ This keeps environment lookups in one place so the rest of the codebase
 imports from here instead of scattering os.getenv calls everywhere.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import subprocess
@@ -30,9 +30,11 @@ class Settings:
     github_token: str | None = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
     eval_min_overall: float = float(os.getenv("EVAL_MIN_OVERALL_SCORE", "0.75"))
     events_api_token: str | None = os.getenv("EVENTS_API_TOKEN")
-    allow_origins: list[str] = (
-        os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-        .split(",")
+    # Use default_factory to avoid mutable default list error under dataclasses
+    allow_origins: list[str] = field(
+        default_factory=lambda: os.getenv(
+            "CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+        ).split(",")
     )
 
 

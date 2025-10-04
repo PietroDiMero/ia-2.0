@@ -22,6 +22,7 @@ from .tasks import task_run_once, task_discover_once
 from .evolve import seed_from_docs
 import requests as _requests_diag
 from .db import connect
+import psycopg
 from typing import Optional
 
 
@@ -141,30 +142,7 @@ def docs_list(limit: int = 50, offset: int = 0):
     except Exception as e:
         return {"items": [], "error": str(e)}
 
-@app.get("/metrics/history")
-def metrics_history(limit: int = 50):
-    try:
-        with connect() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT ts, overall, exact, groundedness, freshness FROM ci_history ORDER BY ts DESC LIMIT %s;",
-                    (limit,),
-                )
-                rows = cur.fetchall()
-        return {
-            "items": [
-                {
-                    "ts": r[0].isoformat(),
-                    "overall": r[1],
-                    "exact": r[2],
-                    "groundedness": r[3],
-                    "freshness": r[4],
-                }
-                for r in rows
-            ]
-        }
-    except Exception as e:
-        return {"items": [], "error": str(e)}
+## (Removed earlier duplicate /metrics/history simple endpoint; consolidated later extended version.)
 
 
 @app.get("/sources")
@@ -371,7 +349,7 @@ def evaluate_run(body: EvaluateBody):
                             None,
                             None,
                             None,
-                            _requests_diag.types.json.Json({"questions": questions}),
+                            psycopg.types.json.Json({"questions": questions}),
                         ),
                     )
                     cur.execute(
@@ -796,14 +774,7 @@ def index_versions():
     return {"items": []}
 
 
-class EvaluateRunBody(BaseModel):
-    sets: list[str] | None = None
-
-
-@app.post("/evaluate/run")
-def evaluate_run(body: EvaluateRunBody | None = None):
-    # Placeholder: trigger local evaluator asynchronously in a real setup
-    return {"status": "ok", "task_id": None}
+## Duplicate placeholder /evaluate/run endpoint removed.
 
 
 @app.get("/evaluate/recent")
