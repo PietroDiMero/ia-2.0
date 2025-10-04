@@ -203,6 +203,8 @@ def metrics():
         except Exception:
             discover_qs = None
         # Keep legacy fields and add UI-friendly fields expected by frontend
+        retrieval_top_k = int(os.getenv("RETRIEVAL_TOP_K", "6") or 6)
+        confidence_threshold = float(os.getenv("CONFIDENCE_THRESHOLD", "0.25") or 0.25)
         return {
             "nb_docs": docs,
             "nb_sources": sources,
@@ -216,6 +218,8 @@ def metrics():
             "ci": ci_status,
             "eval_threshold": float(eval_threshold) if eval_threshold else None,
             "discovery_queries": discover_qs,
+            "retrieval_top_k": retrieval_top_k,
+            "confidence_threshold": confidence_threshold,
         }
     except Exception:
         return {
@@ -336,6 +340,35 @@ def evaluate_run(body: EvaluateBody):
     overall_grounded = sum(grounded_scores) / max(1, len(grounded_scores))
     overall = round((overall_exact * 0.6 + overall_grounded * 0.4), 3)
 
+    # Freshness heuristic: compute average age (days) of cited documents and derive a score
+    from datetime import timezone as _tz
+    cited_urls = {c.get("url") for r in results for c in r.get("citations", []) if c.get("url")}
+    avg_freshness_days: float | None = None
+    freshness_score: float | None = None
+    if cited_urls:
+        try:
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT published_at FROM documents WHERE url = ANY(%s);", (list(cited_urls),))
+                    rows = cur.fetchall()
+            now = datetime.now(_tz.utc)
+            ages: list[float] = []
+            for (published_at,) in rows:
+                if published_at:
+                    ages.append((now - published_at).total_seconds() / 86400.0)
+            if ages:
+                avg_freshness_days = sum(ages) / len(ages)
+                if avg_freshness_days <= 7:
+                    freshness_score = 1.0
+                elif avg_freshness_days >= 90:
+                    freshness_score = 0.0
+                else:
+                    freshness_score = max(0.0, min(1.0, 1 - ((avg_freshness_days - 7) / (90 - 7))))
+                freshness_score = round(freshness_score, 3)
+                avg_freshness_days = round(avg_freshness_days, 2)
+        except Exception:
+            pass
+
     if body.record:
         try:
             with connect() as conn:
@@ -347,14 +380,14 @@ def evaluate_run(body: EvaluateBody):
                             overall_exact,
                             overall_grounded,
                             None,
-                            None,
-                            None,
+                            freshness_score,
+                            avg_freshness_days,
                             psycopg.types.json.Json({"questions": questions}),
                         ),
                     )
                     cur.execute(
                         "INSERT INTO ci_status(id, overall, exact, groundedness, freshness, updated_at) VALUES(1,%s,%s,%s,%s,NOW()) ON CONFLICT (id) DO UPDATE SET overall=EXCLUDED.overall, exact=EXCLUDED.exact, groundedness=EXCLUDED.groundedness, freshness=EXCLUDED.freshness, updated_at=NOW();",
-                        (overall, overall_exact, overall_grounded, None),
+                        (overall, overall_exact, overall_grounded, freshness_score),
                     )
                 conn.commit()
             log_event("evolve", "Evaluation enregistrée", meta={"overall": overall})
@@ -366,6 +399,8 @@ def evaluate_run(body: EvaluateBody):
         "overall": overall,
         "exact": round(overall_exact, 3),
         "groundedness": round(overall_grounded, 3),
+        "freshness": freshness_score,
+        "avg_freshness_days": avg_freshness_days,
         "results": results,
     }
 
@@ -708,11 +743,18 @@ def metrics_record(payload: dict):
 
 
 @app.get("/metrics/history")
-def metrics_history(limit: Optional[int] = 50):
+def metrics_history(limit: Optional[int] = 50, offset: int = 0):
     try:
+        limit = int(limit or 50)
+        offset = int(offset or 0)
         with connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, ts, overall, exact, groundedness, semantic_f1, freshness, avg_freshness_days, meta FROM ci_history ORDER BY ts DESC LIMIT %s;", (limit,))
+                cur.execute("SELECT COUNT(*) FROM ci_history;")
+                total = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT id, ts, overall, exact, groundedness, semantic_f1, freshness, avg_freshness_days, meta FROM ci_history ORDER BY ts DESC LIMIT %s OFFSET %s;",
+                    (limit, offset),
+                )
                 rows = cur.fetchall()
         items = [
             {
@@ -728,9 +770,9 @@ def metrics_history(limit: Optional[int] = 50):
             }
             for r in rows
         ]
-        return {"items": items}
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
-        return {"items": [], "error": str(e)}
+        return {"items": [], "error": str(e), "total": 0, "limit": limit, "offset": offset}
 
 
 @app.post("/index/build")
