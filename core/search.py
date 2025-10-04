@@ -225,14 +225,14 @@ def _extract_citations(answer: str) -> List[Dict[str, str]]:
     return cites
 
 
-def search_answer(query: str) -> Dict[str, Any]:
+def search_answer(query: str, top_k: int | None = None) -> Dict[str, Any]:
     """
     - Récupère top_k=6 passages via pgvector (cosine), fallback TF-IDF si indispo.
     - Construit un prompt imposant les citations [titre](url) après chaque paragraphe, sinon "Je ne sais pas" + sources.
     - Appelle le LLM (modèle et température via env) si des sources pertinentes existent.
     - Renvoie { answer, citations: [{title,url}], confidence }.
     """
-    top_k = int(_get_env("RETRIEVAL_TOP_K", "6") or 6)
+    top_k = int(top_k or int(_get_env("RETRIEVAL_TOP_K", "6") or 6))
     threshold = float(_get_env("CONFIDENCE_THRESHOLD", "0.25") or 0.25)
 
     passages = retrieve_passages(query, top_k=top_k)
