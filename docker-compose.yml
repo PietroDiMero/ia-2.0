@@ -33,12 +33,18 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    # Charge toutes les variables définies dans .env (dont GITHUB_TOKEN, GITHUB_REPOSITORY, etc.)
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://appuser:apppass@db:5432/appdb
       REDIS_URL: redis://redis:6379/0
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       DATA_DIR: /app/data
+      # (Optionnel mais explicite) Passe explicitement les variables critiques à l'environnement du conteneur.
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY}
     ports:
       - "8000:8000"
     depends_on:
@@ -51,7 +57,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-    command: ["python", "server.py"]
+    # Run FastAPI app (replaces Flask wrapper once deps are installed)
+    command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - app-data:/app/data
 
