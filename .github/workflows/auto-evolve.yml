@@ -1,0 +1,51 @@
+name: Auto Evolve
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # every day at 03:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  evolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate and apply mentor plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENTS_API_URL: ${{ secrets.EVENTS_API_URL }}
+          EVENTS_API_TOKEN: ${{ secrets.EVENTS_API_TOKEN }}
+        run: |
+          python evolver/mentor.py --out evolver_plan.json
+          python tools/apply_plan.py
+          if [ -n "$EVENTS_API_URL" ] && [ -n "$EVENTS_API_TOKEN" ]; then \
+            curl -s -X POST "$EVENTS_API_URL" -H "Content-Type: application/json" -d "{\"stage\":\"evolve\",\"level\":\"info\",\"message\":\"Plan generated and applied\",\"meta\":{},\"token\":\"$EVENTS_API_TOKEN\"}" >/dev/null || true; \
+          fi
+
+      - name: Commit, push and open PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_USER_NAME: auto-evolver-bot
+          GIT_USER_EMAIL: actions@github.com
+          EVENTS_API_URL: ${{ secrets.EVENTS_API_URL }}
+          EVENTS_API_TOKEN: ${{ secrets.EVENTS_API_TOKEN }}
+        run: |
+          python tools/auto_evolve_ci.py
+          if [ -n "$EVENTS_API_URL" ] && [ -n "$EVENTS_API_TOKEN" ]; then \
+            curl -s -X POST "$EVENTS_API_URL" -H "Content-Type: application/json" -d "{\"stage\":\"evolve\",\"level\":\"info\",\"message\":\"PR created\",\"meta\":{},\"token\":\"$EVENTS_API_TOKEN\"}" >/dev/null || true; \
+          fi
