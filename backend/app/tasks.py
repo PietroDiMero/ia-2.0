@@ -11,6 +11,8 @@ import subprocess
 import json
 import os as _os
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
 def _get_env(name: str, default: str) -> str:
@@ -175,3 +177,62 @@ def task_evaluate_and_record(version_id: int = 1, testset: str | None = None) ->
     except Exception as e:
         log_event("evolve", f"Evaluator run failed: {e}", level="error")
         return {"status": "error", "error": str(e)}
+
+
+@celery_app.task(name="backend.app.tasks.task_simple_evaluate")
+def task_simple_evaluate(questions: list[str] | None = None) -> dict[str, Any]:
+    """Async version of /evaluate/run: reuses search_answer logic for provided questions."""
+    from core.search import search_answer
+    from .main import _evaluate_exact, _evaluate_grounded  # type: ignore
+    qs = questions or [
+        "Qu'est-ce qu'un agent auto-évolutif ?",
+        "Comment fonctionne l'index actuel ?",
+        "Quel est l'objectif du système ?",
+    ]
+    results: list[dict[str, Any]] = []
+    exact_scores: list[float] = []
+    grounded_scores: list[float] = []
+    for q in qs:
+        try:
+            r = search_answer(q)
+            ex = _evaluate_exact(r.get("answer", ""), q)
+            gr = _evaluate_grounded(r.get("citations", []))
+            exact_scores.append(ex)
+            grounded_scores.append(gr)
+            results.append({
+                "question": q,
+                "answer": r.get("answer"),
+                "exact": ex,
+                "grounded": gr,
+                "confidence": r.get("confidence"),
+                "citations": r.get("citations", []),
+            })
+        except Exception as e:
+            results.append({"question": q, "error": str(e), "exact": 0.0, "grounded": 0.0})
+    overall_exact = sum(exact_scores) / max(1, len(exact_scores))
+    overall_grounded = sum(grounded_scores) / max(1, len(grounded_scores))
+    overall = round((overall_exact * 0.6 + overall_grounded * 0.4), 3)
+    payload = {
+        "status": "ok",
+        "overall": overall,
+        "exact": round(overall_exact, 3),
+        "groundedness": round(overall_grounded, 3),
+        "results": results,
+    }
+    # Persist like sync version (no freshness heuristic here yet)
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO ci_history(overall, exact, groundedness, semantic_f1, freshness, avg_freshness_days, meta) VALUES(%s,%s,%s,%s,%s,%s,%s);",
+                    (overall, overall_exact, overall_grounded, None, None, None, json.dumps({"questions": qs})),
+                )
+                cur.execute(
+                    "INSERT INTO ci_status(id, overall, exact, groundedness, freshness, updated_at) VALUES(1,%s,%s,%s,%s,NOW()) ON CONFLICT (id) DO UPDATE SET overall=EXCLUDED.overall, exact=EXCLUDED.exact, groundedness=EXCLUDED.groundedness, freshness=EXCLUDED.freshness, updated_at=NOW();",
+                    (overall, overall_exact, overall_grounded, None),
+                )
+            conn.commit()
+        log_event("evolve", "Async evaluation enregistrée", meta={"overall": overall})
+    except Exception:
+        pass
+    return payload

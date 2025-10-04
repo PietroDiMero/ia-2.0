@@ -63,6 +63,16 @@ def health():
         "time": datetime.utcnow().isoformat() + "Z",
     }
 
+@app.get("/config/runtime")
+def runtime_config():
+    return {
+        "version": settings.version,
+        "env": settings.env,
+        "retrieval_top_k": int(os.getenv("RETRIEVAL_TOP_K", "6") or 6),
+        "confidence_threshold": float(os.getenv("CONFIDENCE_THRESHOLD", "0.25") or 0.25),
+        "eval_min_overall": settings.eval_min_overall,
+    }
+
 # --- New unified ingestion/search pipeline endpoints for frontend --- #
 
 @app.post("/crawl/run")
