@@ -297,7 +297,7 @@ def ingest_index(batch_size: int = 10):
 @app.get("/search")
 def search(q: str, k: int = 6):
     try:
-        res = search_answer(q)
+        res = search_answer(q, top_k=k)
         # build sources array [[title,url], ...]
         sources = [[c.get("title") or "", c.get("url") or ""] for c in res.get("citations", [])]
         return {"query": q, **res, "sources": sources}
