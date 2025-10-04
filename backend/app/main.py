@@ -123,6 +123,10 @@ def docs_list(limit: int = 50, offset: int = 0):
         with connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
+                    "SELECT COUNT(*) FROM documents;"
+                )
+                total = cur.fetchone()[0]
+                cur.execute(
                     "SELECT url, title, published_at, lang, created_at FROM documents ORDER BY id DESC LIMIT %s OFFSET %s;",
                     (limit, offset),
                 )
@@ -137,10 +141,13 @@ def docs_list(limit: int = 50, offset: int = 0):
                     "created_at": r[4].isoformat() if r[4] else None,
                 }
                 for r in rows
-            ]
+            ],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
         }
     except Exception as e:
-        return {"items": [], "error": str(e)}
+        return {"items": [], "error": str(e), "total": 0, "limit": limit, "offset": offset}
 
 ## (Removed earlier duplicate /metrics/history simple endpoint; consolidated later extended version.)
 
@@ -403,6 +410,20 @@ def evaluate_run(body: EvaluateBody):
         "avg_freshness_days": avg_freshness_days,
         "results": results,
     }
+
+
+class EvaluateAsyncBody(BaseModel):
+    questions: list[str] | None = None
+
+
+@app.post("/evaluate/run_async")
+def evaluate_run_async(body: EvaluateAsyncBody | None = None):
+    try:
+        qs = body.questions if body and body.questions else None
+        async_res = celery_app.signature("backend.app.tasks.task_simple_evaluate", kwargs={"questions": qs}).apply_async()
+        return {"status": "ok", "task_id": async_res.id}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 # Minimal jobs endpoint(s) for UI compatibility and polling
