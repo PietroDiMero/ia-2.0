@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, List
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from .db import init_db, connect, log_event
+from .config import settings
 from .indexer import index_unembedded
 from crawler.run import crawl_sources, discover_new_sources
 from core.search import search_answer
@@ -54,7 +55,116 @@ app.include_router(search_router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "env": settings.env,
+        "version": settings.version,
+        "time": datetime.utcnow().isoformat() + "Z",
+    }
+
+# --- New unified ingestion/search pipeline endpoints for frontend --- #
+
+@app.post("/crawl/run")
+def crawl_run(limit: int = 50):
+    try:
+        inserted = crawl_sources(limit=limit)
+        return {"status": "ok", "inserted": inserted}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.post("/index/run")
+def index_run(batch: int = 50):
+    try:
+        indexed = index_unembedded(batch_size=batch)
+        return {"status": "ok", "indexed": indexed}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.post("/discover/run")
+def discover_run(per_query: int = 5, max_new: int = 25, queries: str | None = None):
+    try:
+        qs = [q.strip() for q in queries.split(",") if q.strip()] if queries else None
+        new_sources = discover_new_sources(per_query=per_query, max_new=max_new, queries=qs)
+        return {"status": "ok", "new_sources": new_sources}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.post("/discover/run_async")
+def discover_run_async(per_query: int = 5, max_new: int = 25, queries: str | None = None):
+    try:
+        qs = [q.strip() for q in queries.split(",") if q.strip()] if queries else None
+        async_res = task_discover_once.delay(per_query=per_query, max_new=max_new, queries=qs)
+        return {"status": "ok", "task_id": async_res.id}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@app.get("/tasks/{task_id}")
+def task_status(task_id: str):
+    try:
+        res: AsyncResult = AsyncResult(task_id, app=celery_app)
+        out: dict[str, Any] = {"task_id": task_id, "state": res.state}
+        if res.successful():
+            out["status"] = "ok"
+            if isinstance(res.result, dict):
+                out.update(res.result)
+        elif res.failed():
+            out["status"] = "error"
+            out["error"] = str(res.result)
+        else:
+            out["status"] = "pending"
+        return out
+    except Exception as e:
+        return {"task_id": task_id, "status": "error", "error": str(e)}
+
+@app.get("/docs")
+def docs_list(limit: int = 50, offset: int = 0):
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT url, title, published_at, lang, created_at FROM documents ORDER BY id DESC LIMIT %s OFFSET %s;",
+                    (limit, offset),
+                )
+                rows = cur.fetchall()
+        return {
+            "items": [
+                {
+                    "url": r[0],
+                    "title": r[1],
+                    "date": r[2].isoformat() if r[2] else None,
+                    "lang": r[3],
+                    "created_at": r[4].isoformat() if r[4] else None,
+                }
+                for r in rows
+            ]
+        }
+    except Exception as e:
+        return {"items": [], "error": str(e)}
+
+@app.get("/metrics/history")
+def metrics_history(limit: int = 50):
+    try:
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ts, overall, exact, groundedness, freshness FROM ci_history ORDER BY ts DESC LIMIT %s;",
+                    (limit,),
+                )
+                rows = cur.fetchall()
+        return {
+            "items": [
+                {
+                    "ts": r[0].isoformat(),
+                    "overall": r[1],
+                    "exact": r[2],
+                    "groundedness": r[3],
+                    "freshness": r[4],
+                }
+                for r in rows
+            ]
+        }
+    except Exception as e:
+        return {"items": [], "error": str(e)}
 
 
 @app.get("/sources")
