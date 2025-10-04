@@ -16,7 +16,13 @@ jobs:
           python-version: '3.12'
       - name: Install backend deps
         run: |
-          pip install -r backend/requirements.txt
+          if [ -f backend/requirements.txt ]; then
+            echo "backend/requirements.txt trouvé (legacy)";
+            pip install -r backend/requirements.txt;
+          else
+            echo "backend/requirements.txt absent → utilisation du requirements.txt racine";
+            pip install -r requirements.txt;
+          fi
           pip install ruff
       - name: Lint backend (ruff)
         run: |
