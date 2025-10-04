@@ -17,5 +17,5 @@ COPY . /app/
 
 EXPOSE 8000
 
-# Run the Flask server
+# Default command (overridden by docker-compose to run uvicorn). Keep Flask as fallback.
 CMD ["python", "server.py"]

@@ -22,6 +22,13 @@ from flask_cors import CORS
 # We reuse the core logic implemented in main.py
 import main as core
 try:
+    # Import the FastAPI module handlers so we can forward a few new endpoints
+    # without switching how the container is started. The module path is
+    # backend.app.main (installed in the repo), import it if available.
+    from backend.app import main as api_main  # type: ignore
+except Exception:
+    api_main = None  # type: ignore
+try:
     from openai import OpenAI  # type: ignore
 except Exception:
     OpenAI = None  # type: ignore
@@ -66,7 +73,8 @@ LOG_FILE = DATA_DIR / "logs.json"
 
 
 app = Flask(__name__, static_folder=str(ROOT / "dashboard"))
-CORS(app, resources={r"*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000", "*"]}})
+# Be permissive during local development to avoid CORS issues from the dev frontend.
+CORS(app, resources={r"*": {"origins": "*"}}, supports_credentials=True)
 
 
 # ---- In-memory state ----
@@ -180,6 +188,198 @@ def _wellknown_chrome_devtools():
 def _favicon_blank():
     # Avoid 404 noise for favicon; browsers probe this by default
     return ("", 204, {})
+
+
+# Forward a couple of new metrics endpoints to the FastAPI implementation when
+# present. This keeps the container entrypoint as the Flask `server.py` while
+# allowing the newer FastAPI routes to be reachable on the same port.
+@app.post("/metrics/record")
+def flask_metrics_record():
+    # If the FastAPI implementation is available, delegate to it. Otherwise
+    # persist to a local JSON file under DATA_DIR as a lightweight fallback
+    try:
+        payload = request.get_json(force=True)
+    except Exception:
+        payload = {}
+
+    if api_main is not None and hasattr(api_main, "metrics_record"):
+        try:
+            res = api_main.metrics_record(payload)
+            status = 200 if res.get("status") == "ok" else 500
+            return (jsonify(res), status)
+        except Exception:
+            # Fall through to file-based fallback
+            pass
+
+    # File-based fallback persistence
+    try:
+        hist_file = DATA_DIR / "ci_history.json"
+        items = []
+        if hist_file.exists():
+            try:
+                with open(hist_file, "r", encoding="utf-8") as f:
+                    items = json.load(f)
+            except Exception:
+                items = []
+        # Build record
+        rec = {
+            "id": (items[-1]["id"] + 1) if items else 1,
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "overall": payload.get("overall"),
+            "exact": payload.get("exact"),
+            "groundedness": payload.get("groundedness"),
+            "semantic_f1": payload.get("semantic_f1"),
+            "freshness": payload.get("freshness"),
+            "avg_freshness_days": payload.get("avg_freshness_days"),
+            "meta": payload.get("meta") or {},
+        }
+        items.append(rec)
+        with open(hist_file, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=2)
+        return (jsonify({"status": "ok"}), 200)
+    except Exception as e:
+        return (jsonify({"status": "error", "error": str(e)}), 500)
+
+
+@app.get("/metrics/history")
+def flask_metrics_history():
+    # Prefer delegating to FastAPI handler if available
+    try:
+        limit = request.args.get("limit")
+        args = {}
+        if limit is not None:
+            try:
+                args["limit"] = int(limit)
+            except Exception:
+                args["limit"] = 50
+        if api_main is not None and hasattr(api_main, "metrics_history"):
+            try:
+                res = api_main.metrics_history(**args)
+                return jsonify(res)
+            except Exception:
+                pass
+
+        # File-based fallback
+        hist_file = DATA_DIR / "ci_history.json"
+        items = []
+        if hist_file.exists():
+            try:
+                with open(hist_file, "r", encoding="utf-8") as f:
+                    items = json.load(f)
+            except Exception:
+                items = []
+        # Apply limit
+        lim = args.get("limit") or 50
+        out = {"items": list(reversed(items))[:lim]}
+        return jsonify(out)
+    except Exception as e:
+        return (jsonify({"items": [], "error": str(e)}), 500)
+
+
+# Ingestion endpoints used by the frontend (Run Once, async runner).
+# These are implemented in the FastAPI app (`backend.app.main`) but the
+# container runs the Flask wrapper. Provide a small forwarding wrapper so
+# the browser preflight (OPTIONS) and the POST itself receive JSON responses
+# instead of failing with a network error when FastAPI/psycopg are not present.
+@app.post("/ingest/run")
+def flask_ingest_run():
+    try:
+        body = request.get_json(force=True) or {}
+    except Exception:
+        body = None
+
+    # Debug-print incoming request headers/body (filter out common secrets)
+    try:
+        hdrs = {k: v for k, v in dict(request.headers).items() if k.lower() not in ['authorization', 'cookie']}
+    except Exception:
+        hdrs = {}
+    print(f"[INGEST] POST /ingest/run headers={hdrs} body={(str(body)[:1000] + '...') if body else None}")
+
+    # Delegate to FastAPI handler if available
+    if api_main is not None and hasattr(api_main, "ingest_run"):
+        try:
+            return api_main.ingest_run(body)
+        except Exception as e:
+            print(f"[INGEST] delegate failed: {e}")
+            return (jsonify({"status": "error", "error": str(e)}), 500)
+
+    # Fallback: return an explicit JSON error with 200 OK so the browser
+    # receives a valid HTTP response (avoids axios 'Network Error' which
+    # can hide CORS/preflight or connection issues). The UI will display
+    # the error from the JSON body and we avoid an opaque network failure.
+    resp = jsonify({"status": "error", "error": "ingest endpoints unavailable in this deployment (FastAPI not installed)"})
+    # Ensure CORS header present for browsers (flask-cors should do this,
+    # but set it explicitly to be robust for dev envs).
+    resp.headers["Access-Control-Allow-Origin"] = os.getenv("FRONTEND_ORIGIN", "*")
+    return (resp, 200)
+
+
+@app.post("/ingest/run_async")
+def flask_ingest_run_async():
+    try:
+        # We don't strictly need the body for the basic trigger
+        body = request.get_json(force=True) or {}
+    except Exception:
+        body = None
+
+    try:
+        hdrs = {k: v for k, v in dict(request.headers).items() if k.lower() not in ['authorization', 'cookie']}
+    except Exception:
+        hdrs = {}
+    print(f"[INGEST_ASYNC] POST /ingest/run_async headers={hdrs} body={(str(body)[:1000] + '...') if body else None}")
+
+    if api_main is not None and hasattr(api_main, "ingest_run_async"):
+        try:
+            return api_main.ingest_run_async(body)
+        except Exception as e:
+            print(f"[INGEST_ASYNC] delegate failed: {e}")
+            return (jsonify({"status": "error", "error": str(e)}), 500)
+
+    resp = jsonify({"status": "error", "error": "ingest async unavailable in this deployment (FastAPI not installed)"})
+    resp.headers["Access-Control-Allow-Origin"] = os.getenv("FRONTEND_ORIGIN", "*")
+    return (resp, 200)
+
+
+# ---------------------------------------------------------------------------
+# Minimal /events endpoints (frontend polls these). Since FastAPI (DB) layer
+# isn't active here, provide a simple in-memory ring buffer so the UI stops
+# hitting 404 and can at least display runtime events generated locally.
+# ---------------------------------------------------------------------------
+_events_buffer: list[dict[str, Any]] = []
+_EVENTS_MAX = 500
+
+def _push_event(stage: str, level: str, message: str, meta: dict | None = None):
+    evt = {
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "stage": stage,
+        "level": level,
+        "message": message,
+        "meta": meta or {},
+    }
+    _events_buffer.append(evt)
+    if len(_events_buffer) > _EVENTS_MAX:
+        del _events_buffer[: len(_events_buffer) - _EVENTS_MAX]
+
+@app.get("/events")
+def events_list():
+    try:
+        limit = request.args.get("limit", type=int) or 100
+        return jsonify({"items": list(reversed(_events_buffer))[:limit]})
+    except Exception as e:
+        return jsonify({"items": [], "error": str(e)})
+
+@app.post("/events")
+def events_post():
+    try:
+        data = request.get_json(force=True) or {}
+        stage = (data.get("stage") or "misc").strip()[:40]
+        level = (data.get("level") or "info").strip()[:20]
+        message = (data.get("message") or "").strip()[:400]
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+        _push_event(stage, level, message, meta)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)})
 
 
 def _norm_url(u: str) -> str:
