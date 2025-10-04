@@ -16,6 +16,8 @@ import {
   pollJob,
   getIndexVersions,
   postEvaluateRun,
+  postEvaluateRunAsync,
+  getRuntimeConfig,
   runDiscover,
   runDiscoverAsync,
   getEvents,
@@ -31,6 +33,7 @@ import CiChart from "@/components/admin/CiChart"
 export default function AdminPage() {
   const qc = useQueryClient()
   const metrics = useQuery({ queryKey: ["metrics"], queryFn: getMetrics, refetchInterval: 5000 })
+  const runtime = useQuery({ queryKey: ["runtime"], queryFn: getRuntimeConfig, refetchInterval: 60000 })
   const [docLimit, setDocLimit] = useState(15)
   const [docOffset, setDocOffset] = useState(0)
   const docs = useQuery({ queryKey: ["docs", docLimit, docOffset], queryFn: () => getDocs(docLimit, docOffset), refetchInterval: 15000 })
@@ -100,9 +103,52 @@ export default function AdminPage() {
   })
   const mEval = useMutation({
     mutationFn: async () => postEvaluateRun([]),
-    onSuccess: (data) => { setMessage("Évaluation lancée"); setLastResult(data) },
+    onSuccess: (data) => { setMessage("Évaluation (sync) terminée"); setLastResult(data); qc.invalidateQueries({ queryKey: ["metrics"] }); qc.invalidateQueries({ queryKey: ["ci_history"] }) },
     onError: (err: any) => { setMessage("Erreur évaluation"); setLastResult(err?.response?.data || String(err)) }
   })
+
+  const [evalTaskId, setEvalTaskId] = useState<string | null>(null)
+  const [evalPolling, setEvalPolling] = useState(false)
+  const mEvalAsync = useMutation({
+    mutationFn: async () => {
+      const start = await postEvaluateRunAsync()
+      if (start.task_id) {
+        setEvalTaskId(start.task_id)
+        setEvalPolling(true)
+      }
+      return start
+    },
+    onSuccess: (data) => { setMessage("Évaluation async lancée"); setLastResult(data) },
+    onError: (err: any) => { setMessage("Erreur évaluation async"); setLastResult(err?.response?.data || String(err)) }
+  })
+
+  // Poll eval task
+  useEffect(() => {
+    let stopped = false
+    async function loop() {
+      if (!evalTaskId || !evalPolling) return
+      while (!stopped) {
+        try {
+          const r = await fetch(`${BACKEND_URL}/tasks/${evalTaskId}`)
+          const j = await r.json()
+            if (j.status && j.status !== 'pending') {
+              setLastResult(j)
+              setMessage('Évaluation async terminée')
+              setEvalPolling(false)
+              qc.invalidateQueries({ queryKey: ["metrics"] })
+              qc.invalidateQueries({ queryKey: ["ci_history"] })
+              break
+            }
+        } catch (e) {
+          setMessage('Erreur polling évaluation async')
+          break
+        }
+        await new Promise(r => setTimeout(r, 2500))
+      }
+    }
+    loop()
+    return () => { stopped = true }
+  }, [evalTaskId, evalPolling, qc])
 
   const mSeedFromDocs = useMutation({
     mutationFn: async () => {
@@ -187,6 +233,14 @@ export default function AdminPage() {
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur px-6 py-4 flex items-center justify-between gap-6">
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-semibold tracking-wide text-slate-100">AI Admin Console</h1>
+          {runtime.data && (
+            <div className="flex items-center gap-2 text-[10px] text-slate-500">
+              <span>{runtime.data.env}</span>
+              <span className="px-1 rounded bg-slate-800/70 border border-slate-700 text-slate-300">{runtime.data.version}</span>
+              <span>k={runtime.data.retrieval_top_k}</span>
+              <span>thr={runtime.data.confidence_threshold}</span>
+            </div>
+          )}
           <nav className="hidden md:flex gap-4 text-xs text-slate-400">
             <Link className="hover:text-slate-200" href="/">Accueil</Link>
             <Link className="hover:text-slate-200" href="/dashboard">Dashboard</Link>
@@ -216,7 +270,8 @@ export default function AdminPage() {
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mDiscover.mutate()}>Discover</button>
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mCrawl.mutate()}>Crawler</button>
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mIndex.mutate()}>Indexer</button>
-                <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mEval.mutate()}>Évaluer</button>
+                <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500 disabled:opacity-40" disabled={mEval.status==='pending'} onClick={() => mEval.mutate()}>Évaluer (sync)</button>
+                <button className="px-3 py-2 bg-purple-600 rounded text-xs hover:bg-purple-500 disabled:opacity-40" disabled={mEvalAsync.status==='pending' || evalPolling} onClick={() => mEvalAsync.mutate()}>{evalPolling ? 'En cours…' : 'Évaluer async'}</button>
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mSeedFromDocs.mutate()}>Seed docs</button>
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs hover:bg-indigo-500" onClick={() => mTriggerEvolve.mutate()}>Evolve CI</button>
               </div>}>
@@ -374,7 +429,8 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-2 mb-4">
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs" onClick={() => mSeedFromDocs.mutate()}>Seed from docs</button>
                 <button className="px-3 py-2 bg-indigo-600 rounded text-xs" onClick={() => mTriggerEvolve.mutate()}>Déclencher auto-evolve</button>
-                <button className="px-3 py-2 bg-indigo-600 rounded text-xs" onClick={() => mEval.mutate()}>Évaluer</button>
+                <button className="px-3 py-2 bg-indigo-600 rounded text-xs disabled:opacity-40" disabled={mEval.status==='pending'} onClick={() => mEval.mutate()}>Évaluer (sync)</button>
+                <button className="px-3 py-2 bg-purple-600 rounded text-xs disabled:opacity-40" disabled={mEvalAsync.status==='pending' || evalPolling} onClick={() => mEvalAsync.mutate()}>{evalPolling ? 'Async…' : 'Évaluer async'}</button>
               </div>
               <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-300">
                 <div>Overall: <span className="text-slate-100">{metrics.data?.ci?.overall ?? '–'}</span></div>

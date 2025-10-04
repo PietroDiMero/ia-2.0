@@ -20,6 +20,8 @@ export interface EventsItem { ts: string; stage: string; level: string; message:
 export interface SearchResult { query: string; answer: string; citations: { title: string; url: string }[]; confidence: number; sources: [string,string][]; error?: string }
 export interface EvaluationResultRow { question: string; answer?: string; exact: number; grounded: number; confidence?: number; citations?: {title:string;url:string}[]; error?: string }
 export interface EvaluationRun { status: string; overall: number; exact: number; groundedness: number; freshness?: number|null; avg_freshness_days?: number|null; results: EvaluationResultRow[] }
+export interface RuntimeConfig { version: string; env: string; retrieval_top_k: number; confidence_threshold: number; eval_min_overall: number }
+export interface EvaluateAsyncStart { status: string; task_id?: string }
 
 function unwrap<T>(p: Promise<{ data: T }>): Promise<T> { return p.then(r=>r.data) }
 function safe<T>(fn: ()=>Promise<T>, fallback: T): Promise<T> {
@@ -28,6 +30,7 @@ function safe<T>(fn: ()=>Promise<T>, fallback: T): Promise<T> {
 
 // ---- API helpers ----
 export async function getMetrics(): Promise<Metrics> { return unwrap(api.get<Metrics>("/metrics")) }
+export async function getRuntimeConfig(): Promise<RuntimeConfig> { return unwrap(api.get<RuntimeConfig>("/config/runtime")) }
 
 export async function getJobs(params?: { type?: string; status?: string }) {
   const { data } = await api.get("/jobs", { params })
@@ -52,6 +55,9 @@ export async function postIndexBuild() {
 export async function postEvaluateRun(sets?: string[]) {
   const { data } = await api.post("/evaluate/run", { sets: sets || [] })
   return data as { status: string; task_id?: string }
+}
+export async function postEvaluateRunAsync(): Promise<EvaluateAsyncStart> {
+  return unwrap(api.post<EvaluateAsyncStart>("/evaluate/run_async", {}))
 }
 
 export async function getSearch(q: string, k = 5): Promise<SearchResult> {
