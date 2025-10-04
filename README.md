@@ -68,3 +68,25 @@ Organisation conseillée pour évoluer :
   - Mettre en œuvre des évaluations plus sophistiquées (exactitude, hallucination, diversité) et un moteur d'auto‑évolution inspiré des cadres EvoAgentX et Darwin Gödel Machine.
 - Le tableau de bord est servi par Flask (`server.py`) et communique via des endpoints REST.
 - Le crawler fourni est minimal (pas de robots.txt, pas de rendu JS). Pour un usage réel, utilisez des bibliothèques dédiées (Ex: scrapy, playwright) et respectez les politiques des sites.
+
+## Rebuild Docker complet
+
+Des scripts utilitaires ont été ajoutés pour reconstruire entièrement la stack (backend + frontend + services) :
+
+Linux / macOS :
+```bash
+./scripts/rebuild_all.sh
+```
+
+Windows PowerShell :
+```powershell
+./scripts/rebuild_all.ps1
+```
+
+Ce que fait le script :
+1. `docker compose down --remove-orphans`
+2. `docker compose build --no-cache`
+3. `docker compose up -d`
+4. Attente active jusqu'à ce que `http://localhost:8000/health` réponde OK.
+
+Échec si le backend n'est pas sain après ~60s.
