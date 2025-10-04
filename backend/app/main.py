@@ -297,19 +297,99 @@ def ingest_index(batch_size: int = 10):
 @app.get("/search")
 def search(q: str, k: int = 6):
     try:
-        res = search_answer(q, top_k=k)
-        # Map to UI-expected shape (sources instead of citations) while preserving original fields
-        sources = []
-        for c in res.get("citations", []):
-            title = c.get("title") or ""
-            url = c.get("url") or ""
-            sources.append([title, url])
-        out = dict(res)
-        out["query"] = q
-        out["sources"] = sources
-        return out
+        res = search_answer(q)
+        # build sources array [[title,url], ...]
+        sources = [[c.get("title") or "", c.get("url") or ""] for c in res.get("citations", [])]
+        return {"query": q, **res, "sources": sources}
     except Exception as e:
         return {"query": q, "answer": "Je ne sais pas", "citations": [], "sources": [], "confidence": 0.0, "error": str(e)}
+
+
+# --- Simple evaluation endpoint to compute basic quality metrics --- #
+
+class EvaluateBody(BaseModel):
+    questions: list[str] | None = None
+    record: bool = True
+
+
+def _evaluate_exact(answer: str, question: str) -> float:
+    # naive exactness: proportion of question tokens appearing in answer
+    q_tokens = {t.lower() for t in question.split() if len(t) > 2}
+    if not q_tokens:
+        return 0.0
+    a_tokens = {t.lower() for t in answer.split()}
+    inter = len(q_tokens.intersection(a_tokens))
+    return round(inter / len(q_tokens), 3)
+
+
+def _evaluate_grounded(citations: list[dict[str, Any]]) -> float:
+    # groundedness: 1.0 if at least one citation, else 0
+    return 1.0 if citations else 0.0
+
+
+@app.post("/evaluate/run")
+def evaluate_run(body: EvaluateBody):
+    questions = body.questions or [
+        "Qu'est-ce qu'un agent auto-évolutif ?",
+        "Comment fonctionne l'index actuel ?",
+        "Quel est l'objectif du système ?",
+    ]
+    results: list[dict[str, Any]] = []
+    exact_scores: list[float] = []
+    grounded_scores: list[float] = []
+    for q in questions:
+        try:
+            r = search_answer(q)
+            ex = _evaluate_exact(r.get("answer", ""), q)
+            gr = _evaluate_grounded(r.get("citations", []))
+            exact_scores.append(ex)
+            grounded_scores.append(gr)
+            results.append({
+                "question": q,
+                "answer": r.get("answer"),
+                "exact": ex,
+                "grounded": gr,
+                "confidence": r.get("confidence"),
+                "citations": r.get("citations", []),
+            })
+        except Exception as e:  # continue evaluating others
+            results.append({"question": q, "error": str(e), "exact": 0.0, "grounded": 0.0})
+    overall_exact = sum(exact_scores) / max(1, len(exact_scores))
+    overall_grounded = sum(grounded_scores) / max(1, len(grounded_scores))
+    overall = round((overall_exact * 0.6 + overall_grounded * 0.4), 3)
+
+    if body.record:
+        try:
+            with connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "INSERT INTO ci_history(overall, exact, groundedness, semantic_f1, freshness, avg_freshness_days, meta) VALUES(%s,%s,%s,%s,%s,%s,%s);",
+                        (
+                            overall,
+                            overall_exact,
+                            overall_grounded,
+                            None,
+                            None,
+                            None,
+                            _requests_diag.types.json.Json({"questions": questions}),
+                        ),
+                    )
+                    cur.execute(
+                        "INSERT INTO ci_status(id, overall, exact, groundedness, freshness, updated_at) VALUES(1,%s,%s,%s,%s,NOW()) ON CONFLICT (id) DO UPDATE SET overall=EXCLUDED.overall, exact=EXCLUDED.exact, groundedness=EXCLUDED.groundedness, freshness=EXCLUDED.freshness, updated_at=NOW();",
+                        (overall, overall_exact, overall_grounded, None),
+                    )
+                conn.commit()
+            log_event("evolve", "Evaluation enregistrée", meta={"overall": overall})
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "overall": overall,
+        "exact": round(overall_exact, 3),
+        "groundedness": round(overall_grounded, 3),
+        "results": results,
+    }
 
 
 # Minimal jobs endpoint(s) for UI compatibility and polling
