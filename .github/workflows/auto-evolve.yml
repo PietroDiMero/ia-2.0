@@ -14,6 +14,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Assure l'accès à tout l'historique / branches si ref spécifique
+      # Étape ajoutée: vérification explicite des fichiers nécessaires avant d'aller plus loin.
+      # Si cette étape échoue, c'est généralement que la branche 'main' (ou ref dispatchée) ne contient pas encore les scripts.
+      - name: Sanity check fichiers requis
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "Ref GitHub détectée: ${GITHUB_REF}"
+          echo "Répertoire courant: $(pwd)"
+          echo "Branches locales:"; git branch --all || true
+          echo "TOP 40 fichiers:"; ls -1 | head -40
+          if [ ! -f evolver/mentor.py ]; then
+            echo "::error file=evolver/mentor.py::evolver/mentor.py introuvable sur la ref ${GITHUB_REF}. Merge (ou cherry-pick) le fichier dans cette branche avant de relancer.";
+            echo "Fichiers evolver/ présents:"; ls -al evolver || true; exit 1; fi
+          if [ ! -f tools/apply_plan.py ]; then
+            echo "::error file=tools/apply_plan.py::tools/apply_plan.py introuvable"; ls -al tools || true; exit 1; fi
+          echo "Mentor présent, contenu (premières lignes):"; head -20 evolver/mentor.py || true
 
       - name: Setup Python
         uses: actions/setup-python@v5
